@@ -1,0 +1,544 @@
+import { Store } from './store.js';
+
+class App {
+    constructor() {
+        this.currentView = 'tasks';
+        this.tutorialStep = 0;
+        this.notifSound = new Audio('assets/miau-triste.mp3');
+        this.init();
+    }
+
+    async init() {
+        // Prevent double-tap zoom on iOS
+        document.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 1) e.preventDefault();
+        }, { passive: false });
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js');
+        }
+
+        Store.initDefaults();
+        Store.applyRollover();
+        Store.runDailyIntelligence();
+
+        this.render();
+        this.setupEventListeners();
+        this.updateHeaderDate();
+        lucide.createIcons();
+
+        // Check for tutorial
+        if (!Store.state.settings.tutorialComplete) {
+            this.showTutorial();
+        }
+
+        // Start smart scheduler
+        this.startNotificationScheduler();
+    }
+
+    // --- TUTORIAL SYSTEM ---
+    showTutorial() {
+        const steps = [
+            { title: "¡Bienvenido!", text: "Esta es tu app HogarZen. Vamos a enseñarte lo básico en 30 segundos." },
+            { title: "Audio de Alerta", text: "Haz clic abajo para probar el sonido de notificación (Miau Triste)." },
+            { title: "Añadir Tareas", text: "Usa el botón '+' abajo a la derecha. La IA decidirá si es limpieza o compra por ti." },
+            { title: "Marcar como Hecho", text: "Toca el círculo a la derecha de cada tarea cuando la termines." },
+            { title: "Notificaciones Inteligentes", text: "Te avisaremos de tus pendientes solo cuando estés en casa (de 6 PM a 10 PM)." }
+        ];
+
+        const overlay = document.createElement('div');
+        overlay.className = 'tutorial-overlay active';
+        overlay.innerHTML = `
+            <div class="tutorial-box">
+                <h2 id="tut-title">${steps[0].title}</h2>
+                <p id="tut-text">${steps[0].text}</p>
+                <button class="tutorial-next" id="tut-btn">Siguiente</button>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        let currentStep = 0;
+        document.getElementById('tut-btn').onclick = () => {
+            currentStep++;
+            if (currentStep < steps.length) {
+                document.getElementById('tut-title').innerText = steps[currentStep].title;
+                document.getElementById('tut-text').innerText = steps[currentStep].text;
+
+                // Play sound on step 1 to unlock audio context
+                if (currentStep === 1) {
+                    this.playNotifSound();
+                }
+            } else {
+                overlay.remove();
+                Store.state.settings.tutorialComplete = true;
+                Store.save();
+                this.requestNotifPermission();
+            }
+        };
+    }
+
+    async requestNotifPermission() {
+        if ("Notification" in window) {
+            const permission = await Notification.requestPermission();
+            Store.state.settings.notificationsEnabled = (permission === "granted");
+            Store.save();
+        }
+    }
+
+    // --- SMART SCHEDULER ---
+    startNotificationScheduler() {
+        setInterval(() => {
+            const now = new Date();
+            const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            const { start, end } = Store.state.settings.notifWindow;
+
+            if (currentTime >= start && currentTime <= end) {
+                this.checkAndNotify();
+            }
+        }, 60000); // Check every minute
+    }
+
+    checkAndNotify() {
+        const today = new Date().toISOString().split('T')[0];
+        const tasks = Store.getScheduledTasks(today);
+        const pending = tasks.filter(t => !t.completed);
+
+        // Smart Cooking Reminder Logic
+        const now = new Date();
+        const settings = Store.state.settings;
+
+        // 1. Cooking Suggester (based on sleep time)
+        const [endH, endM] = settings.notifWindow.end.split(':').map(Number);
+        const sleepTime = new Date();
+        sleepTime.setHours(endH, endM, 0);
+        const dinnerTime = new Date(sleepTime.getTime() - (settings.dinnerOffset * 60 * 60 * 1000));
+
+        if (now.getHours() === dinnerTime.getHours() && now.getMinutes() === dinnerTime.getMinutes()) {
+            this.showToast("🍳 IA Sugiere: Es hora de cocinar la cena para descansar a las " + settings.notifWindow.end);
+            this.playNotifSound();
+        }
+
+        // 2. Work Prep Suggester (Lunch/Clothes) - 1 hour before work
+        if (settings.workStartTime) {
+            const [workH, workM] = settings.workStartTime.split(':').map(Number);
+            const workTime = new Date();
+            workTime.setHours(workH, workM, 0);
+            const prepTime = new Date(workTime.getTime() - (1 * 60 * 60 * 1000));
+
+            if (now.getHours() === prepTime.getHours() && now.getMinutes() === prepTime.getMinutes()) {
+                this.showToast("💼 Preparación: ¿Ya tienes listo el almuerzo y la ropa para el trabajo?");
+                this.playNotifSound();
+            }
+        }
+
+        if (pending.length > 0) {
+            this.showToast(`Tienes ${pending.length} tareas pendientes.`);
+            this.playNotifSound();
+            if (settings.notificationsEnabled) {
+                new Notification("HogarZen", {
+                    body: `Tienes ${pending.length} tareas pendientes. ¡Vamos a por ello!`,
+                    icon: "assets/icon.png"
+                });
+            }
+        }
+    }
+
+    playNotifSound() {
+        this.notifSound.play().catch(e => console.log("Audio play blocked", e));
+    }
+
+    showToast(msg) {
+        const toast = document.createElement('div');
+        toast.className = 'toast active';
+        toast.innerHTML = `<i data-lucide="bell"></i> <span>${msg}</span>`;
+        document.body.appendChild(toast);
+        lucide.createIcons();
+        setTimeout(() => toast.classList.remove('active'), 4000);
+        setTimeout(() => toast.remove(), 4500);
+    }
+
+    // --- RENDER LOGIC ---
+    updateHeaderDate() {
+        const options = { weekday: 'long', day: 'numeric', month: 'long' };
+        document.getElementById('current-date').innerText = new Date().toLocaleDateString('es-ES', options);
+    }
+
+    setupEventListeners() {
+        document.querySelectorAll('.nav-item').forEach(btn => {
+            btn.onclick = (e) => this.switchView(e.currentTarget.getAttribute('data-view'));
+        });
+        document.getElementById('add-btn').onclick = () => this.showAddTaskModal();
+    }
+
+    switchView(view) {
+        this.currentView = view;
+        document.querySelectorAll('.nav-item').forEach(btn => btn.classList.toggle('active', btn.getAttribute('data-view') === view));
+        this.render();
+    }
+
+    render() {
+        const container = document.getElementById('main-content');
+
+        // Personalization: Update name in header
+        const userName = Store.state.settings.userName || 'Usuario';
+        document.getElementById('current-date').innerHTML = `Hola, ${userName} <br> ${this.getFormattedDate()}`;
+
+        switch (this.currentView) {
+            case 'tasks': this.renderTasks(container); break;
+            case 'shopping': this.renderShopping(container); break;
+            case 'scanner': this.renderScanner(container); break;
+            case 'stats': this.renderStats(container); break; // NEW
+            case 'settings': this.renderSettings(container); break;
+            default: container.innerHTML = `<div class="empty-state">Próximamente...</div>`;
+        }
+        lucide.createIcons();
+    }
+
+    getFormattedDate() {
+        const options = { weekday: 'long', day: 'numeric', month: 'long' };
+        return new Date().toLocaleDateString('es-ES', options);
+    }
+
+    renderTasks(container) {
+        const today = new Date().toISOString().split('T')[0];
+        const tasks = Store.getScheduledTasks(today);
+
+        if (tasks.length === 0) {
+            container.innerHTML = `<div class="empty-state"><i data-lucide="sun"></i><p>Todo listo por hoy.</p></div>`;
+            return;
+        }
+
+        let html = '<h2 class="view-title">Mis Deberes</h2>';
+        tasks.sort((a, b) => (a.priority === 'high' ? -1 : 1)).forEach(task => {
+            html += `
+                <div class="card task-item ${task.completed ? 'completed' : ''}" id="task-${task.id}">
+                    <div class="task-info">
+                        <span class="priority-dot ${task.priority}"></span>
+                        <div>
+                            <h3>${task.title}</h3>
+                            <small>${task.type}</small>
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <button class="delete-btn" onclick="app.deleteTask(${task.id})">
+                            <i data-lucide="trash-2"></i>
+                        </button>
+                        <button class="check-btn" onclick="app.toggleTask(${task.id})">
+                            <i data-lucide="${task.completed ? 'check-circle' : 'circle'}"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    }
+
+    renderStats(container) {
+        const tasks = Store.state.tasks;
+        const total = tasks.length;
+        const complete = tasks.filter(t => t.completed).length;
+        const percent = total > 0 ? Math.round((complete / total) * 100) : 0;
+
+        container.innerHTML = `
+            <div class="stats-header">
+                <h2 class="view-title">Tu Progreso</h2>
+                <div class="progress-circle" style="--progress: ${percent}">
+                    <div class="progress-content">
+                        <span class="progress-val">${percent}%</span>
+                        <p>Completado</p>
+                    </div>
+                </div>
+            </div>
+            <div class="stat-grid">
+                <div class="stat-card">
+                    <i data-lucide="list-checks"></i>
+                    <h3>${complete}</h3>
+                    <p>Hechas</p>
+                </div>
+                <div class="stat-card">
+                    <i data-lucide="clock"></i>
+                    <h3>${total - complete}</h3>
+                    <p>Pendientes</p>
+                </div>
+            </div>
+
+            <div class="card" style="border-left: 4px solid var(--priority-high); margin-top: 1.5rem;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <i data-lucide="utensils" style="color:var(--priority-high)"></i>
+                    <div>
+                        <h3 style="font-size:1.1rem">Apartado: Horario de Cocina</h3>
+                        <p style="font-size:0.9rem; color:var(--text-muted)">Hoy toca cocinar a las: <b>${this.getDinnerTime()}</b></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" id="market-card">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <i data-lucide="shopping-cart" style="color:var(--accent-sage)"></i>
+                        <div>
+                            <h3 style="font-size:1.1rem">Registro de Mercado</h3>
+                            <p style="font-size:0.8rem; color:var(--text-muted)">
+                                ${Store.state.settings.lastMarketDate
+                ? 'Último mercado: ' + new Date(Store.state.settings.lastMarketDate).toLocaleDateString()
+                : 'Aún no has registrado el mercado'}
+                            </p>
+                        </div>
+                    </div>
+                    <button class="tutorial-next" style="width:auto; padding:0.5rem 1rem;" onclick="app.doMarketRegister()">Log Mercado</button>
+                </div>
+            </div>
+
+            <h2 class="view-title" style="margin-top:2rem;">Inventario & Stock</h2>
+            <div id="inventory-list">
+                ${this.renderInventoryItems()}
+            </div>
+        `;
+    }
+
+    renderInventoryItems() {
+        const items = Store.state.inventory;
+        if (items.length === 0) {
+            return `<div class="empty-state" style="padding:1rem;"><p>No hay productos registrados.</p></div>`;
+        }
+
+        return items.map(item => `
+            <div class="card inventory-item">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <h3 style="font-size:1.1rem">${item.name}</h3>
+                        <p style="font-size:0.8rem; color:var(--text-muted)">Consumido: ${item.consumed} | Stock: <b>${item.quantity}</b></p>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <button class="action-btn" onclick="app.adjustStock('${item.id}', 1)" style="background:var(--accent-cream); border:none; padding:5px 10px; border-radius:8px; color:var(--accent-sage-dark);">+1</button>
+                        <button class="action-btn" onclick="app.adjustStock('${item.id}', -1)" style="background:var(--accent-sage); border:none; padding:5px 10px; border-radius:8px; color:white;">Consumir</button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    renderSettings(container) {
+        const s = Store.state.settings;
+        container.innerHTML = `
+            <h2 class="view-title">Ajustes</h2>
+            <div class="card">
+                <h3>Perfil</h3>
+                <label>Tu Nombre</label>
+                <input type="text" id="set-name" class="settings-input" value="${s.userName || ''}" placeholder="Escribe tu nombre">
+                
+                <h3>Horario de Notificaciones</h3>
+                <p>Te avisaremos entre estas horas:</p>
+                <div style="display:flex; gap:10px; margin-top:10px;">
+                    <input type="time" id="set-start" class="settings-input" value="${s.notifWindow.start}">
+                    <input type="time" id="set-end" class="settings-input" value="${s.notifWindow.end}">
+                </div>
+
+                <h3>Horario Laboral</h3>
+                <label>Entrada al Trabajo</label>
+                <input type="time" id="set-work" class="settings-input" value="${s.workStartTime || '09:00'}">
+
+                <button class="tutorial-next" style="margin-top:1rem" id="save-settings">Guardar Cambios</button>
+            </div>
+
+            <div class="card" style="background:var(--accent-cream); border:none;">
+                <h3 style="color:var(--accent-sage-dark);">✨ Inteligencia Zen</h3>
+                <p style="font-size:0.9rem; margin-top:0.5rem;">
+                    Basado en tus ajustes, te sugerimos:
+                    <br>• <b>Cocinar:</b> ${this.getDinnerTime()} (Prioridad Alta)
+                    <br>• <b>Preparar Trabajo:</b> 1h antes de las ${s.workStartTime} (Recordatorio)
+                </p>
+            </div>
+        `;
+        document.getElementById('save-settings').onclick = () => {
+            s.userName = document.getElementById('set-name').value;
+            s.notifWindow.start = document.getElementById('set-start').value;
+            s.notifWindow.end = document.getElementById('set-end').value;
+            s.workStartTime = document.getElementById('set-work').value;
+            Store.save();
+            this.render();
+            this.showToast("Ajustes guardados con éxito");
+        };
+    }
+
+    renderShopping(container) {
+        const items = Store.state.shoppingItems;
+        let html = '<h2 class="view-title">Lista de Compras</h2>';
+
+        if (items.length === 0) {
+            html += `<div class="empty-state"><i data-lucide="shopping-cart"></i><p>No hay artículos en la lista.</p></div>`;
+        } else {
+            items.forEach(item => {
+                html += `
+                    <div class="card shopping-item" style="display:flex; justify-content:space-between; align-items:center;">
+                        <div class="item-info">
+                            <h3>${item.name}</h3>
+                            <span>Cant: ${item.quantity}</span>
+                        </div>
+                        <button class="action-btn" style="background:none; border:none; color:var(--accent-sage);"><i data-lucide="shopping-bag"></i></button>
+                    </div>
+                `;
+            });
+        }
+        container.innerHTML = html;
+    }
+
+    renderScanner(container) {
+        container.innerHTML = `
+            <div class="card scanner-view">
+                <h2 class="view-title">Escanear Factura</h2>
+                <p>Captura tu factura para actualizar existencias automáticamente e inteligencia de compra.</p>
+                <div class="drop-zone" id="camera-preview" style="border: 2px dashed var(--accent-cream); padding: 3rem; border-radius: var(--radius); text-align: center; display: flex; flex-direction: column; align-items: center; gap: 1rem; cursor: pointer; margin-top:1rem;">
+                    <i data-lucide="camera" style="width:40px;height:40px;color:var(--accent-sage);"></i>
+                    <span>Tocar para usar cámara</span>
+                    <input type="file" id="file-input" accept="image/*" style="display:none">
+                </div>
+                <div id="ocr-status" style="margin-top: 1rem; font-size: 0.9rem; color: var(--accent-sage-dark); text-align: center;"></div>
+            </div>
+        `;
+
+        document.getElementById('camera-preview').onclick = () => {
+            document.getElementById('file-input').click();
+        };
+
+        document.getElementById('file-input').onchange = (e) => {
+            this.handleScan(e.target.files[0]);
+        };
+    }
+
+    async handleScan(file) {
+        if (!file) return;
+        const status = document.getElementById('ocr-status');
+        status.innerText = "Procesando factura... 🧠";
+
+        try {
+            const result = await Tesseract.recognize(file, 'spa');
+            const text = result.data.text.toLowerCase();
+
+            // Item database with icons
+            const itemCatalog = {
+                'leche': 'droplets',
+                'pan': 'bread',
+                'huevos': 'egg',
+                'arroz': 'wheat',
+                'pasta': 'utensils-crossed',
+                'detergente': 'sparkles',
+                'jabon': 'bath',
+                'shampoo': 'wind',
+                'cafe': 'coffee',
+                'azucar': 'container'
+            };
+
+            let foundItems = [];
+
+            Object.keys(itemCatalog).forEach(itemName => {
+                if (text.includes(itemName)) {
+                    const icon = itemCatalog[itemName];
+                    const displayName = itemName.charAt(0).toUpperCase() + itemName.slice(1);
+                    Store.updateInventory(displayName, 1);
+                    foundItems.push({ name: displayName, icon: icon });
+                }
+            });
+
+            if (foundItems.length > 0) {
+                let itemsHtml = foundItems.map(item => `
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px; background:white; padding:8px 12px; border-radius:10px;">
+                        <i data-lucide="${item.icon}" style="width:18px; color:var(--accent-sage);"></i>
+                        <span style="font-weight:600;">${item.name}</span>
+                        <span style="margin-left:auto; font-size:0.8rem; color:var(--accent-sage-dark);">+1 Agregado</span>
+                    </div>
+                `).join('');
+
+                status.innerHTML = `
+                    <div class="scan-result" style="background:var(--accent-cream); padding:1rem; border-radius:12px; margin-top:1rem; text-align:left;">
+                        <p style="margin-bottom:12px; font-weight:700;">✅ Factura procesada. Items detectados:</p>
+                        ${itemsHtml}
+                    </div>
+                `;
+                lucide.createIcons();
+                this.showToast(`Detectados ${foundItems.length} artículos`);
+            } else {
+                status.innerHTML = `<p style="margin-top:1rem;">No se detectaron productos conocidos, pero se registró la fecha de mercado.</p>`;
+                this.showToast("Escaneo completado");
+            }
+
+            Store.registerMarket();
+
+        } catch (err) {
+            console.error(err);
+            status.innerText = "Error al procesar la imagen.";
+            this.showToast("Error en el escaneo");
+        }
+    }
+
+    toggleTask(id) {
+        // Find by both value and type for safety
+        const numericId = Number(id);
+        Store.toggleTask(numericId);
+
+        const task = Store.state.tasks.find(t => t.id === numericId);
+        if (task && task.completed) {
+            // Update last clean dates if it's a deep clean task
+            if (task.title.toLowerCase().includes('ropa')) {
+                Store.state.settings.lastDeepClean.clothes = new Date().toISOString();
+                Store.save();
+            } else if (task.title.toLowerCase().includes('sábanas')) {
+                Store.state.settings.lastDeepClean.sheets = new Date().toISOString();
+                Store.save();
+            }
+
+            const el = document.getElementById(`task-${id}`);
+            if (el) el.classList.add('celebrate');
+            this.showToast("¡Buen trabajo!");
+        }
+        this.render();
+    }
+
+    deleteTask(id) {
+        if (confirm("¿Seguro que quieres borrar esta tarea?")) {
+            Store.deleteTask(id);
+            this.render();
+            this.showToast("Tarea eliminada");
+        }
+    }
+
+    showAddTaskModal() {
+        const title = prompt("¿Qué hay que hacer?");
+        if (title) {
+            Store.addTask({ title });
+            this.render();
+            this.showToast("IA: Tarea asignada automáticamente");
+        }
+    }
+    getDinnerTime() {
+        const s = Store.state.settings;
+        const [h, m] = s.notifWindow.end.split(':').map(Number);
+        const date = new Date();
+        date.setHours(h - s.dinnerOffset, m, 0);
+        return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    doMarketRegister() {
+        Store.registerMarket();
+        this.render();
+        this.showToast("Mercado registrado. IA ajustando ciclos...");
+        const card = document.getElementById('market-card');
+        if (card) card.classList.add('celebrate');
+    }
+
+    adjustStock(id, amount) {
+        const numericId = Number(id);
+        if (amount > 0) {
+            const item = Store.state.inventory.find(i => i.id === numericId);
+            if (item) {
+                Store.updateInventory(item.name, amount);
+            }
+        } else {
+            Store.consumeItem(numericId, Math.abs(amount));
+        }
+        this.render();
+        this.showToast(amount > 0 ? "Stock aumentado" : "Producto consumido");
+    }
+}
+
+window.app = new App();
