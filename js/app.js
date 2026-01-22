@@ -312,8 +312,11 @@ class App {
     }
 
     toggleTask(id) {
-        Store.toggleTask(id);
-        const task = Store.state.tasks.find(t => t.id === id);
+        // Find by both value and type for safety
+        const numericId = Number(id);
+        Store.toggleTask(numericId);
+
+        const task = Store.state.tasks.find(t => t.id === numericId);
         if (task && task.completed) {
             const el = document.getElementById(`task-${id}`);
             if (el) el.classList.add('celebrate');

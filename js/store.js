@@ -8,8 +8,13 @@ export const Store = {
             initialized: false,
             tutorialComplete: false,
             notifWindow: { start: "18:00", end: "22:00" },
-            notificationsEnabled: false
+            notificationsEnabled: false,
+            dinnerOffset: 2 // Hours before sleep to suggest cooking
         }
+    },
+
+    generateId() {
+        return Date.now() + Math.floor(Math.random() * 1000);
     },
 
     save() {
@@ -51,7 +56,7 @@ export const Store = {
     addTask(task) {
         const intel = this.designateTask(task.title);
         const newTask = {
-            id: Date.now(),
+            id: this.generateId(),
             title: task.title,
             type: task.type || intel.type,
             priority: task.priority || intel.priority,
