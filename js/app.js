@@ -280,6 +280,15 @@ class App {
 
                 <button class="tutorial-next" style="margin-top:1rem" id="save-settings">Guardar Cambios</button>
             </div>
+
+            <div class="card" style="background:var(--accent-cream); border:none;">
+                <h3 style="color:var(--accent-sage-dark);">✨ Inteligencia Zen</h3>
+                <p style="font-size:0.9rem; margin-top:0.5rem;">
+                    Basado en tus ajustes, te sugerimos:
+                    <br>• <b>Cocinar:</b> ${this.getDinnerTime()}
+                    <br>• <b>Preparar Trabajo:</b> 1h antes de las ${s.workStartTime}
+                </p>
+            </div>
         `;
         document.getElementById('save-settings').onclick = () => {
             s.userName = document.getElementById('set-name').value;
@@ -396,6 +405,13 @@ class App {
             this.render();
             this.showToast("IA: Tarea asignada automáticamente");
         }
+    }
+    getDinnerTime() {
+        const s = Store.state.settings;
+        const [h, m] = s.notifWindow.end.split(':').map(Number);
+        const date = new Date();
+        date.setHours(h - s.dinnerOffset, m, 0);
+        return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
     }
 }
 
