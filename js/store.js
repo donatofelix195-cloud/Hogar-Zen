@@ -2,6 +2,7 @@ export const Store = {
     state: {
         tasks: JSON.parse(localStorage.getItem('zen_tasks')) || [],
         shoppingItems: JSON.parse(localStorage.getItem('zen_shopping')) || [],
+        inventory: JSON.parse(localStorage.getItem('zen_inventory')) || [],
         settings: JSON.parse(localStorage.getItem('zen_settings')) || {
             userName: 'User',
             autoRollover: true,
@@ -25,6 +26,7 @@ export const Store = {
     save() {
         localStorage.setItem('zen_tasks', JSON.stringify(this.state.tasks));
         localStorage.setItem('zen_shopping', JSON.stringify(this.state.shoppingItems));
+        localStorage.setItem('zen_inventory', JSON.stringify(this.state.inventory));
         localStorage.setItem('zen_settings', JSON.stringify(this.state.settings));
     },
 
@@ -154,5 +156,35 @@ export const Store = {
     registerMarket() {
         this.state.settings.lastMarketDate = new Date().toISOString();
         this.save();
+    },
+
+    // INVENTORY MANAGEMENT
+    updateInventory(name, quantityBatch) {
+        const item = this.state.inventory.find(i => i.name.toLowerCase() === name.toLowerCase());
+        if (item) {
+            item.quantity += quantityBatch;
+            item.lastUpdated = new Date().toISOString();
+        } else {
+            this.state.inventory.push({
+                id: this.generateId(),
+                name: name,
+                quantity: quantityBatch,
+                consumed: 0,
+                lastUpdated: new Date().toISOString()
+            });
+        }
+        this.save();
+    },
+
+    consumeItem(id, amount = 1) {
+        const item = this.state.inventory.find(i => i.id === id);
+        if (item && item.quantity >= amount) {
+            item.quantity -= amount;
+            item.consumed += amount;
+            item.lastUpdated = new Date().toISOString();
+            this.save();
+            return true;
+        }
+        return false;
     }
 };

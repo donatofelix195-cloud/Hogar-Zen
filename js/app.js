@@ -288,7 +288,34 @@ class App {
                     <button class="tutorial-next" style="width:auto; padding:0.5rem 1rem;" onclick="app.doMarketRegister()">Log Mercado</button>
                 </div>
             </div>
+
+            <h2 class="view-title" style="margin-top:2rem;">Inventario & Stock</h2>
+            <div id="inventory-list">
+                ${this.renderInventoryItems()}
+            </div>
         `;
+    }
+
+    renderInventoryItems() {
+        const items = Store.state.inventory;
+        if (items.length === 0) {
+            return `<div class="empty-state" style="padding:1rem;"><p>No hay productos registrados.</p></div>`;
+        }
+
+        return items.map(item => `
+            <div class="card inventory-item">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <h3 style="font-size:1.1rem">${item.name}</h3>
+                        <p style="font-size:0.8rem; color:var(--text-muted)">Consumido: ${item.consumed} | Stock: <b>${item.quantity}</b></p>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <button class="action-btn" onclick="app.adjustStock('${item.id}', 1)" style="background:var(--accent-cream); border:none; padding:5px 10px; border-radius:8px; color:var(--accent-sage-dark);">+1</button>
+                        <button class="action-btn" onclick="app.adjustStock('${item.id}', -1)" style="background:var(--accent-sage); border:none; padding:5px 10px; border-radius:8px; color:white;">Consumir</button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
     }
 
     renderSettings(container) {
@@ -453,6 +480,20 @@ class App {
         this.showToast("Mercado registrado. IA ajustando ciclos...");
         const card = document.getElementById('market-card');
         if (card) card.classList.add('celebrate');
+    }
+
+    adjustStock(id, amount) {
+        const numericId = Number(id);
+        if (amount > 0) {
+            const item = Store.state.inventory.find(i => i.id === numericId);
+            if (item) {
+                Store.updateInventory(item.name, amount);
+            }
+        } else {
+            Store.consumeItem(numericId, Math.abs(amount));
+        }
+        this.render();
+        this.showToast(amount > 0 ? "Stock aumentado" : "Producto consumido");
     }
 }
 
