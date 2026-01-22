@@ -9,12 +9,18 @@ class App {
     }
 
     async init() {
+        // Prevent double-tap zoom on iOS
+        document.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 1) e.preventDefault();
+        }, { passive: false });
+
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('./sw.js');
         }
 
         Store.initDefaults();
         Store.applyRollover();
+        Store.runDailyIntelligence();
 
         this.render();
         this.setupEventListeners();
@@ -255,6 +261,33 @@ class App {
                     <p>Pendientes</p>
                 </div>
             </div>
+
+            <div class="card" style="border-left: 4px solid var(--priority-high); margin-top: 1.5rem;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <i data-lucide="utensils" style="color:var(--priority-high)"></i>
+                    <div>
+                        <h3 style="font-size:1.1rem">Apartado: Horario de Cocina</h3>
+                        <p style="font-size:0.9rem; color:var(--text-muted)">Hoy toca cocinar a las: <b>${this.getDinnerTime()}</b></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" id="market-card">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <i data-lucide="shopping-cart" style="color:var(--accent-sage)"></i>
+                        <div>
+                            <h3 style="font-size:1.1rem">Registro de Mercado</h3>
+                            <p style="font-size:0.8rem; color:var(--text-muted)">
+                                ${Store.state.settings.lastMarketDate
+                ? 'Último mercado: ' + new Date(Store.state.settings.lastMarketDate).toLocaleDateString()
+                : 'Aún no has registrado el mercado'}
+                            </p>
+                        </div>
+                    </div>
+                    <button class="tutorial-next" style="width:auto; padding:0.5rem 1rem;" onclick="app.doMarketRegister()">Log Mercado</button>
+                </div>
+            </div>
         `;
     }
 
@@ -285,8 +318,8 @@ class App {
                 <h3 style="color:var(--accent-sage-dark);">✨ Inteligencia Zen</h3>
                 <p style="font-size:0.9rem; margin-top:0.5rem;">
                     Basado en tus ajustes, te sugerimos:
-                    <br>• <b>Cocinar:</b> ${this.getDinnerTime()}
-                    <br>• <b>Preparar Trabajo:</b> 1h antes de las ${s.workStartTime}
+                    <br>• <b>Cocinar:</b> ${this.getDinnerTime()} (Prioridad Alta)
+                    <br>• <b>Preparar Trabajo:</b> 1h antes de las ${s.workStartTime} (Recordatorio)
                 </p>
             </div>
         `;
@@ -412,6 +445,14 @@ class App {
         const date = new Date();
         date.setHours(h - s.dinnerOffset, m, 0);
         return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    doMarketRegister() {
+        Store.registerMarket();
+        this.render();
+        this.showToast("Mercado registrado. IA ajustando ciclos...");
+        const card = document.getElementById('market-card');
+        if (card) card.classList.add('celebrate');
     }
 }
 

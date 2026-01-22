@@ -193,13 +193,14 @@
     opacity: 1;
 }
 
-/* SETTINGS INPUTS */
+/* SETTINGS INPUTS - Font size 16px prevents auto-zoom on mobile */
 .settings-input {
     width: 100%;
     border: 1px solid var(--accent-cream);
     padding: 0.8rem;
     border-radius: 12px;
     font-family: inherit;
+    font-size: 16px;
     margin-top: 0.5rem;
     margin-bottom: 1rem;
     outline: none;
@@ -214,6 +215,17 @@
     padding: 0;
     box-sizing: border-box;
     -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    /* Evita que parezca documento web */
+    touch-action: manipulation;
+    /* Evita el zoom de doble toque */
+}
+
+input,
+textarea,
+[contenteditable] {
+    user-select: text;
+    /* Permite escribir en campos */
 }
 
 body {

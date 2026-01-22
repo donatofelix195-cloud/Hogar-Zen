@@ -12,7 +12,9 @@ export const Store = {
             dinnerOffset: 2,
             workStartTime: "09:00",
             cleaningFrequencies: { clothes: 3, sheets: 7 },
-            lastDeepClean: { clothes: null, sheets: null }
+            lastDeepClean: { clothes: null, sheets: null },
+            marketFrequency: 7,
+            lastMarketDate: null
         }
     },
 
@@ -102,28 +104,55 @@ export const Store = {
         return this.state.tasks.filter(t => t.dueDate === date);
     },
 
-    // Automated Reasoning for Deep Cleaning
+    // Automated Reasoning for Zen Life
     runDailyIntelligence() {
         const today = new Date().toISOString().split('T')[0];
         const now = new Date();
+        const settings = this.state.settings;
         const existingTasks = this.getScheduledTasks(today);
 
-        // 1. Clothes Cleaning Logic
-        const lastClothes = this.state.settings.lastDeepClean.clothes ? new Date(this.state.settings.lastDeepClean.clothes) : null;
+        // 1. MANDATORY: Cooking Task (High Priority)
+        if (!existingTasks.find(t => t.title.toLowerCase().includes('cocinar') || t.title.toLowerCase().includes('cena'))) {
+            this.addTask({
+                title: 'Cocinar Cena (Horario Zen)',
+                type: 'hogar',
+                priority: 'high',
+                dueDate: today
+            });
+        }
+
+        // 2. Clothes Cleaning Logic
+        const lastClothes = settings.lastDeepClean.clothes ? new Date(settings.lastDeepClean.clothes) : null;
         const daysSinceClothes = lastClothes ? Math.floor((now - lastClothes) / (1000 * 60 * 60 * 24)) : 999;
-        if (daysSinceClothes >= this.state.settings.cleaningFrequencies.clothes) {
+        if (daysSinceClothes >= settings.cleaningFrequencies.clothes) {
             if (!existingTasks.find(t => t.title.toLowerCase().includes('ropa'))) {
                 this.addTask({ title: 'Lavar ropa y prendas', type: 'limpieza', priority: 'medium', dueDate: today });
             }
         }
 
-        // 2. Sheets Cleaning Logic
-        const lastSheets = this.state.settings.lastDeepClean.sheets ? new Date(this.state.settings.lastDeepClean.sheets) : null;
+        // 3. Sheets Cleaning Logic
+        const lastSheets = settings.lastDeepClean.sheets ? new Date(settings.lastDeepClean.sheets) : null;
         const daysSinceSheets = lastSheets ? Math.floor((now - lastSheets) / (1000 * 60 * 60 * 24)) : 999;
-        if (daysSinceSheets >= this.state.settings.cleaningFrequencies.sheets) {
+        if (daysSinceSheets >= settings.cleaningFrequencies.sheets) {
             if (!existingTasks.find(t => t.title.toLowerCase().includes('sábanas'))) {
                 this.addTask({ title: 'Cambiar y lavar sábanas', type: 'limpieza', priority: 'low', dueDate: today });
             }
         }
+
+        // 4. Market Cycle Reasoning
+        if (settings.lastMarketDate) {
+            const lastMarket = new Date(settings.lastMarketDate);
+            const daysSinceMarket = Math.floor((now - lastMarket) / (1000 * 60 * 60 * 24));
+            if (daysSinceMarket >= settings.marketFrequency - 1) { // 1 day before market
+                if (!existingTasks.find(t => t.title.toLowerCase().includes('mercado'))) {
+                    this.addTask({ title: 'Hacer Mercado (Reabastecer)', type: 'compras', priority: 'high', dueDate: today });
+                }
+            }
+        }
+    },
+
+    registerMarket() {
+        this.state.settings.lastMarketDate = new Date().toISOString();
+        this.save();
     }
 };
