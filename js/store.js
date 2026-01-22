@@ -9,7 +9,10 @@ export const Store = {
             tutorialComplete: false,
             notifWindow: { start: "18:00", end: "22:00" },
             notificationsEnabled: false,
-            dinnerOffset: 2 // Hours before sleep to suggest cooking
+            dinnerOffset: 2,
+            workStartTime: "09:00",
+            cleaningFrequencies: { clothes: 3, sheets: 7 },
+            lastDeepClean: { clothes: null, sheets: null }
         }
     },
 
@@ -97,5 +100,30 @@ export const Store = {
 
     getScheduledTasks(date) {
         return this.state.tasks.filter(t => t.dueDate === date);
+    },
+
+    // Automated Reasoning for Deep Cleaning
+    runDailyIntelligence() {
+        const today = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const existingTasks = this.getScheduledTasks(today);
+
+        // 1. Clothes Cleaning Logic
+        const lastClothes = this.state.settings.lastDeepClean.clothes ? new Date(this.state.settings.lastDeepClean.clothes) : null;
+        const daysSinceClothes = lastClothes ? Math.floor((now - lastClothes) / (1000 * 60 * 60 * 24)) : 999;
+        if (daysSinceClothes >= this.state.settings.cleaningFrequencies.clothes) {
+            if (!existingTasks.find(t => t.title.toLowerCase().includes('ropa'))) {
+                this.addTask({ title: 'Lavar ropa y prendas', type: 'limpieza', priority: 'medium', dueDate: today });
+            }
+        }
+
+        // 2. Sheets Cleaning Logic
+        const lastSheets = this.state.settings.lastDeepClean.sheets ? new Date(this.state.settings.lastDeepClean.sheets) : null;
+        const daysSinceSheets = lastSheets ? Math.floor((now - lastSheets) / (1000 * 60 * 60 * 24)) : 999;
+        if (daysSinceSheets >= this.state.settings.cleaningFrequencies.sheets) {
+            if (!existingTasks.find(t => t.title.toLowerCase().includes('sábanas'))) {
+                this.addTask({ title: 'Cambiar y lavar sábanas', type: 'limpieza', priority: 'low', dueDate: today });
+            }
+        }
     }
 };

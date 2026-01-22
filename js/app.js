@@ -4,6 +4,7 @@ class App {
     constructor() {
         this.currentView = 'tasks';
         this.tutorialStep = 0;
+        this.notifSound = new Audio('assets/miau-triste.mp3');
         this.init();
     }
 
@@ -33,6 +34,7 @@ class App {
     showTutorial() {
         const steps = [
             { title: "¡Bienvenido!", text: "Esta es tu app HogarZen. Vamos a enseñarte lo básico en 30 segundos." },
+            { title: "Audio de Alerta", text: "Haz clic abajo para probar el sonido de notificación (Miau Triste)." },
             { title: "Añadir Tareas", text: "Usa el botón '+' abajo a la derecha. La IA decidirá si es limpieza o compra por ti." },
             { title: "Marcar como Hecho", text: "Toca el círculo a la derecha de cada tarea cuando la termines." },
             { title: "Notificaciones Inteligentes", text: "Te avisaremos de tus pendientes solo cuando estés en casa (de 6 PM a 10 PM)." }
@@ -55,6 +57,11 @@ class App {
             if (currentStep < steps.length) {
                 document.getElementById('tut-title').innerText = steps[currentStep].title;
                 document.getElementById('tut-text').innerText = steps[currentStep].text;
+
+                // Play sound on step 1 to unlock audio context
+                if (currentStep === 1) {
+                    this.playNotifSound();
+                }
             } else {
                 overlay.remove();
                 Store.state.settings.tutorialComplete = true;
@@ -87,17 +94,51 @@ class App {
 
     checkAndNotify() {
         const today = new Date().toISOString().split('T')[0];
-        const pending = Store.getScheduledTasks(today).filter(t => !t.completed);
+        const tasks = Store.getScheduledTasks(today);
+        const pending = tasks.filter(t => !t.completed);
+
+        // Smart Cooking Reminder Logic
+        const now = new Date();
+        const settings = Store.state.settings;
+
+        // 1. Cooking Suggester (based on sleep time)
+        const [endH, endM] = settings.notifWindow.end.split(':').map(Number);
+        const sleepTime = new Date();
+        sleepTime.setHours(endH, endM, 0);
+        const dinnerTime = new Date(sleepTime.getTime() - (settings.dinnerOffset * 60 * 60 * 1000));
+
+        if (now.getHours() === dinnerTime.getHours() && now.getMinutes() === dinnerTime.getMinutes()) {
+            this.showToast("🍳 IA Sugiere: Es hora de cocinar la cena para descansar a las " + settings.notifWindow.end);
+            this.playNotifSound();
+        }
+
+        // 2. Work Prep Suggester (Lunch/Clothes) - 1 hour before work
+        if (settings.workStartTime) {
+            const [workH, workM] = settings.workStartTime.split(':').map(Number);
+            const workTime = new Date();
+            workTime.setHours(workH, workM, 0);
+            const prepTime = new Date(workTime.getTime() - (1 * 60 * 60 * 1000));
+
+            if (now.getHours() === prepTime.getHours() && now.getMinutes() === prepTime.getMinutes()) {
+                this.showToast("💼 Preparación: ¿Ya tienes listo el almuerzo y la ropa para el trabajo?");
+                this.playNotifSound();
+            }
+        }
 
         if (pending.length > 0) {
-            this.showToast(`Tienes ${pending.length} tareas pendientes por hacer.`);
-            if (Store.state.settings.notificationsEnabled) {
+            this.showToast(`Tienes ${pending.length} tareas pendientes.`);
+            this.playNotifSound();
+            if (settings.notificationsEnabled) {
                 new Notification("HogarZen", {
                     body: `Tienes ${pending.length} tareas pendientes. ¡Vamos a por ello!`,
                     icon: "assets/icon.png"
                 });
             }
         }
+    }
+
+    playNotifSound() {
+        this.notifSound.play().catch(e => console.log("Audio play blocked", e));
     }
 
     showToast(msg) {
@@ -232,6 +273,11 @@ class App {
                     <input type="time" id="set-start" class="settings-input" value="${s.notifWindow.start}">
                     <input type="time" id="set-end" class="settings-input" value="${s.notifWindow.end}">
                 </div>
+
+                <h3>Horario Laboral</h3>
+                <label>Entrada al Trabajo</label>
+                <input type="time" id="set-work" class="settings-input" value="${s.workStartTime || '09:00'}">
+
                 <button class="tutorial-next" style="margin-top:1rem" id="save-settings">Guardar Cambios</button>
             </div>
         `;
@@ -239,6 +285,7 @@ class App {
             s.userName = document.getElementById('set-name').value;
             s.notifWindow.start = document.getElementById('set-start').value;
             s.notifWindow.end = document.getElementById('set-end').value;
+            s.workStartTime = document.getElementById('set-work').value;
             Store.save();
             this.render();
             this.showToast("Ajustes guardados con éxito");
@@ -318,6 +365,15 @@ class App {
 
         const task = Store.state.tasks.find(t => t.id === numericId);
         if (task && task.completed) {
+            // Update last clean dates if it's a deep clean task
+            if (task.title.toLowerCase().includes('ropa')) {
+                Store.state.settings.lastDeepClean.clothes = new Date().toISOString();
+                Store.save();
+            } else if (task.title.toLowerCase().includes('sábanas')) {
+                Store.state.settings.lastDeepClean.sheets = new Date().toISOString();
+                Store.save();
+            }
+
             const el = document.getElementById(`task-${id}`);
             if (el) el.classList.add('celebrate');
             this.showToast("¡Buen trabajo!");
