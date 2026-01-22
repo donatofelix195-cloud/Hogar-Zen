@@ -1,0 +1,15 @@
+{
+    "name": "Household Zen",
+    "short_name": "ZenHogar",
+    "start_url": "index.html",
+    "display": "standalone",
+    "background_color": "#F8F9F8",
+    "theme_color": "#8DA399",
+    "icons": [
+        {
+            "src": "assets/icon.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}

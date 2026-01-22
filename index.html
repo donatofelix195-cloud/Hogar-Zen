@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Household Manager | Gestión Inteligente</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <div id="app" class="app-container">
+        <header>
+            <div class="header-content">
+                <h1 class="logo">Hogar<span>Zen</span></h1>
+                <div class="user-info">
+                    <span id="current-date">Cargando fecha...</span>
+                </div>
+            </div>
+        </header>
+
+        <nav class="bottom-nav">
+            <button class="nav-item active" data-view="tasks">
+                <i data-lucide="check-square"></i>
+                <span>Tareas</span>
+            </button>
+            <button class="nav-item" data-view="shopping">
+                <i data-lucide="shopping-cart"></i>
+                <span>Compras</span>
+            </button>
+            <button class="nav-item" data-view="scanner">
+                <div class="scan-fab">
+                    <i data-lucide="scan"></i>
+                </div>
+                <span>Escanear</span>
+            </button>
+            <button class="nav-item" data-view="stats">
+                <i data-lucide="pie-chart"></i>
+                <span>Resumen</span>
+            </button>
+            <button class="nav-item" data-view="settings">
+                <i data-lucide="settings"></i>
+                <span>Ajustes</span>
+            </button>
+        </nav>
+
+        <main id="main-content">
+            <!-- Content will be injected by JS -->
+            <div class="view-loading">
+                <div class="spinner"></div>
+            </div>
+        </main>
+
+        <!-- Floating Action Button for adding tasks -->
+        <div id="add-btn" class="fab">
+            <i data-lucide="plus"></i>
+        </div>
+    </div>
+
+    <!-- Tesseract.js for OCR -->
+    <script src='https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js'></script>
+    
+    <!-- App Scripts -->
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>
