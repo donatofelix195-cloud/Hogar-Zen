@@ -5,8 +5,17 @@ export const Store = {
         settings: JSON.parse(localStorage.getItem('zen_settings')) || {
             userName: 'User',
             autoRollover: true,
-            initialized: false
+            initialized: false,
+            tutorialComplete: false,
+            notifWindow: { start: "18:00", end: "22:00" },
+            notificationsEnabled: false
         }
+    },
+
+    save() {
+        localStorage.setItem('zen_tasks', JSON.stringify(this.state.tasks));
+        localStorage.setItem('zen_shopping', JSON.stringify(this.state.shoppingItems));
+        localStorage.setItem('zen_settings', JSON.stringify(this.state.settings));
     },
 
     initDefaults() {
@@ -19,20 +28,33 @@ export const Store = {
         }
     },
 
+    // Intelligent Designation
+    designateTask(title) {
+        let type = 'hogar';
+        let priority = 'medium';
+        const t = title.toLowerCase();
 
-    save() {
-        localStorage.setItem('zen_tasks', JSON.stringify(this.state.tasks));
-        localStorage.setItem('zen_shopping', JSON.stringify(this.state.shoppingItems));
-        localStorage.setItem('zen_settings', JSON.stringify(this.state.settings));
+        if (t.includes('limpia') || t.includes('lavar') || t.includes('barrer') || t.includes('trapear')) {
+            type = 'limpieza';
+        } else if (t.includes('comprar') || t.includes('mercado') || t.includes('super')) {
+            type = 'compras';
+            priority = 'high';
+        }
+
+        if (t.includes('urgente') || t.includes('importante')) {
+            priority = 'high';
+        }
+
+        return { type, priority };
     },
 
-    // Task Logic
     addTask(task) {
+        const intel = this.designateTask(task.title);
         const newTask = {
             id: Date.now(),
             title: task.title,
-            type: task.type || 'hogar', // hogar, limpieza, compras
-            priority: task.priority || 'medium',
+            type: task.type || intel.type,
+            priority: task.priority || intel.priority,
             dueDate: task.dueDate || new Date().toISOString().split('T')[0],
             completed: false,
             createdAt: new Date().toISOString()
@@ -55,34 +77,17 @@ export const Store = {
         this.save();
     },
 
-    // Intelligent Rollover
     applyRollover() {
         const today = new Date().toISOString().split('T')[0];
         let changes = false;
-
         this.state.tasks.forEach(task => {
             if (!task.completed && task.dueDate < today) {
                 task.dueDate = today;
-                task.priority = 'high'; // Prioritize if rolled over
+                task.priority = 'high';
                 changes = true;
             }
         });
-
         if (changes) this.save();
-    },
-
-    // Shopping Logic
-    addShoppingItem(item) {
-        const newItem = {
-            id: Date.now(),
-            name: item.name,
-            quantity: item.quantity || 1,
-            lastPurchased: item.lastPurchased || null,
-            frequencyDays: item.frequencyDays || 7, // Default weekly
-            needed: true
-        };
-        this.state.shoppingItems.push(newItem);
-        this.save();
     },
 
     getScheduledTasks(date) {
