@@ -413,15 +413,59 @@ class App {
 
         try {
             const result = await Tesseract.recognize(file, 'spa');
-            console.log(result.data.text);
-            status.innerHTML = `
-                <div class="scan-result" style="background:var(--accent-cream); padding:1rem; border-radius:12px; margin-top:1rem;">
-                    <p>Factura procesada con éxito.</p>
-                    <small>Se detectaron nuevos artículos para sugerencias inteligentes.</small>
-                </div>
-            `;
-            this.showToast("Factura procesada con éxito");
+            const text = result.data.text.toLowerCase();
+
+            // Item database with icons
+            const itemCatalog = {
+                'leche': 'droplets',
+                'pan': 'bread',
+                'huevos': 'egg',
+                'arroz': 'wheat',
+                'pasta': 'utensils-crossed',
+                'detergente': 'sparkles',
+                'jabon': 'bath',
+                'shampoo': 'wind',
+                'cafe': 'coffee',
+                'azucar': 'container'
+            };
+
+            let foundItems = [];
+
+            Object.keys(itemCatalog).forEach(itemName => {
+                if (text.includes(itemName)) {
+                    const icon = itemCatalog[itemName];
+                    const displayName = itemName.charAt(0).toUpperCase() + itemName.slice(1);
+                    Store.updateInventory(displayName, 1);
+                    foundItems.push({ name: displayName, icon: icon });
+                }
+            });
+
+            if (foundItems.length > 0) {
+                let itemsHtml = foundItems.map(item => `
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px; background:white; padding:8px 12px; border-radius:10px;">
+                        <i data-lucide="${item.icon}" style="width:18px; color:var(--accent-sage);"></i>
+                        <span style="font-weight:600;">${item.name}</span>
+                        <span style="margin-left:auto; font-size:0.8rem; color:var(--accent-sage-dark);">+1 Agregado</span>
+                    </div>
+                `).join('');
+
+                status.innerHTML = `
+                    <div class="scan-result" style="background:var(--accent-cream); padding:1rem; border-radius:12px; margin-top:1rem; text-align:left;">
+                        <p style="margin-bottom:12px; font-weight:700;">✅ Factura procesada. Items detectados:</p>
+                        ${itemsHtml}
+                    </div>
+                `;
+                lucide.createIcons();
+                this.showToast(`Detectados ${foundItems.length} artículos`);
+            } else {
+                status.innerHTML = `<p style="margin-top:1rem;">No se detectaron productos conocidos, pero se registró la fecha de mercado.</p>`;
+                this.showToast("Escaneo completado");
+            }
+
+            Store.registerMarket();
+
         } catch (err) {
+            console.error(err);
             status.innerText = "Error al procesar la imagen.";
             this.showToast("Error en el escaneo");
         }
